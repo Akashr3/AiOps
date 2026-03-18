@@ -1,0 +1,88 @@
+# k8s/jaeger.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-collector
+  labels:
+    app: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:latest
+        ports:
+        - containerPort: 16686 # Jaeger UI
+        - containerPort: 14268 # Jaeger Collector HTTP
+        - containerPort: 4317  # Jaeger OTLP gRPC
+        - containerPort: 4318  # Jaeger OTLP HTTP
+        env:
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector # Service for OTLP/Zipkin submission
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    - name: otlp-grpc
+      protocol: TCP
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      protocol: TCP
+      port: 4318
+      targetPort: 4318
+    - name: zipkin
+      protocol: TCP
+      port: 9411
+      targetPort: 9411
+    - name: jaeger-collector-http
+      protocol: TCP
+      port: 14268
+      targetPort: 14268
+    - name: jaeger-prometheus-metrics # <--- THIS IS THE CRUCIAL PART! ADD THIS.
+      protocol: TCP
+      port: 14269 # This is the port Prometheus needs to scrape
+      targetPort: 14269 # This is the port the Jaeger container exposes internally for Prometheus metrics
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-ui # Service for the UI
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 16686
+  type: LoadBalancer # Use LoadBalancer to expose UI externally

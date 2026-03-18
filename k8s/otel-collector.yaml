@@ -1,0 +1,84 @@
+# k8s/otel-collector.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+      - name: otel-collector
+        # --- REVERT TO STANDARD CONTRIB IMAGE ---
+        image: otel/opentelemetry-collector-contrib:latest # <--- CHANGE THIS BACK
+        command: ["/otelcol-contrib", "--config=/conf/otel-collector-config.yaml"]
+        ports:
+        - containerPort: 4317 # OTLP gRPC
+        - containerPort: 4318 # OTLP HTTP
+        - containerPort: 13133 # Health Check
+        - containerPort: 8888 # Metrics exposed by the collector itself (internal)
+        - containerPort: 8889 # Prometheus exporter port
+        env:
+        - name: NEW_RELIC_LICENSE_KEY # Still needed for authentication
+          valueFrom:
+            secretKeyRef:
+              name: newrelic-license-key
+              key: NEW_RELIC_LICENSE_KEY 
+        volumeMounts:
+        - name: otel-collector-config-vol
+          mountPath: /conf
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 13133
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 13133
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: otel-collector-config-vol
+        configMap:
+          name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      protocol: TCP
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      protocol: TCP
+      port: 4318
+      targetPort: 4318
+    - name: health
+      protocol: TCP
+      port: 13133
+      targetPort: 13133
+    - name: metrics-internal
+      protocol: TCP
+      port: 8888
+      targetPort: 8888
+    - name: prometheus # NEW: Port for Prometheus exporter
+      protocol: TCP
+      port: 8889
+      targetPort: 8889

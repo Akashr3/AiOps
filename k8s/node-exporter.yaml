@@ -1,0 +1,68 @@
+# k8s/node-exporter.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostPID: true # Required for some system metrics
+      hostIPC: true # Required for some system metrics
+      hostNetwork: true # Required for network metrics
+      dnsPolicy: ClusterFirstWithHostNet # Ensures host network is used
+      containers:
+        - name: node-exporter
+          image: quay.io/prometheus/node-exporter:v1.6.1 # You can choose a different version
+          args:
+            - "--path.sysfs=/host/sys"
+            - "--path.rootfs=/host/root"
+            - "--no-collector.wifi"
+            - "--no-collector.ipvs"
+          ports:
+            - containerPort: 9100
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 200Mi
+          volumeMounts:
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+      volumes:
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  labels:
+    app: node-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: node-exporter
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+      protocol: TCP

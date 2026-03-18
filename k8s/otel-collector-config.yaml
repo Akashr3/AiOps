@@ -1,0 +1,54 @@
+# k8s/otel-collector-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  labels:
+    app: otel-collector
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors: {}
+
+    exporters:
+      debug:
+        verbosity: detailed
+      otlp: # For traces to Jaeger
+        endpoint: "jaeger-collector:4317"
+        tls:
+          insecure: true
+      prometheus: # For metrics to Prometheus
+        endpoint: 0.0.0.0:8889
+
+      # --- NEW/MODIFIED: OTLP exporter for New Relic ---
+      otlp/newrelic: # Using generic OTLP exporter, named 'newrelic'
+        # The OTLP endpoint for New Relic depends on your New Relic region.
+        # Example for US datacenter:
+        endpoint: "https://otlp.nr-data.net:4317" # Use gRPC endpoint for OTLP
+        headers:
+          api-key: ${env:NEW_RELIC_LICENSE_KEY} # Use the license key from env var as API key header
+        tls:
+          insecure: false # Always use TLS for external endpoints like New Relic
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: []
+          exporters: [debug, otlp, otlp/newrelic] # <--- ADD otlp/newrelic exporter for traces
+        metrics:
+          receivers: [otlp]
+          processors: []
+          exporters: [debug, prometheus, otlp/newrelic] # <--- ADD otlp/newrelic exporter for metrics

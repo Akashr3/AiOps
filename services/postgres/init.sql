@@ -1,0 +1,108 @@
+-- ============================================
+-- Aegis Microservices Database Schema
+-- ============================================
+
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    tier VARCHAR(20) DEFAULT 'free',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Catalog items table
+CREATE TABLE IF NOT EXISTS catalog_items (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    in_stock BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Orders table
+CREATE TABLE IF NOT EXISTS orders (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    item_id INTEGER REFERENCES catalog_items(id),
+    amount DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Payments table
+CREATE TABLE IF NOT EXISTS payments (
+    id VARCHAR(50) PRIMARY KEY,
+    order_id VARCHAR(50) REFERENCES orders(id),
+    amount DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    processed_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================
+-- Seed Data: 100 Users
+-- ============================================
+INSERT INTO users (name, email, tier)
+SELECT
+    'user-' || i,
+    'user' || i || '@aegis.demo',
+    CASE WHEN i % 3 = 0 THEN 'premium' ELSE 'free' END
+FROM generate_series(1, 100) AS s(i);
+
+-- ============================================
+-- Seed Data: 50 Catalog Items
+-- ============================================
+INSERT INTO catalog_items (name, price, category, in_stock)
+VALUES
+    ('Wireless Mouse', 29.99, 'electronics', true),
+    ('USB-C Hub', 49.99, 'electronics', true),
+    ('Mechanical Keyboard', 89.99, 'electronics', true),
+    ('Monitor Stand', 39.99, 'electronics', true),
+    ('Webcam HD', 59.99, 'electronics', false),
+    ('Laptop Sleeve', 24.99, 'accessories', true),
+    ('Phone Case', 14.99, 'accessories', true),
+    ('Cable Organizer', 12.99, 'accessories', true),
+    ('Screen Protector', 9.99, 'accessories', true),
+    ('Tablet Stand', 19.99, 'accessories', true),
+    ('Python Cookbook', 44.99, 'books', true),
+    ('Clean Code', 34.99, 'books', true),
+    ('Design Patterns', 39.99, 'books', true),
+    ('Site Reliability Engineering', 49.99, 'books', false),
+    ('Kubernetes in Action', 54.99, 'books', true),
+    ('Running Shoes', 79.99, 'clothing', true),
+    ('Tech T-Shirt', 19.99, 'clothing', true),
+    ('Hoodie', 49.99, 'clothing', true),
+    ('Baseball Cap', 14.99, 'clothing', true),
+    ('Backpack', 69.99, 'clothing', true),
+    ('Coffee Beans 1kg', 18.99, 'food', true),
+    ('Protein Bar Pack', 24.99, 'food', true),
+    ('Green Tea Box', 12.99, 'food', true),
+    ('Trail Mix', 8.99, 'food', true),
+    ('Energy Drink 12-Pack', 29.99, 'food', false),
+    ('Desk Lamp', 34.99, 'electronics', true),
+    ('Bluetooth Speaker', 44.99, 'electronics', true),
+    ('Power Bank', 29.99, 'electronics', true),
+    ('HDMI Cable', 11.99, 'electronics', true),
+    ('Mouse Pad XL', 19.99, 'accessories', true),
+    ('Notebook Set', 15.99, 'accessories', true),
+    ('Pen Set', 22.99, 'accessories', true),
+    ('Desk Organizer', 27.99, 'accessories', true),
+    ('Wrist Rest', 16.99, 'accessories', true),
+    ('Microservices Patterns', 42.99, 'books', true),
+    ('The DevOps Handbook', 36.99, 'books', true),
+    ('Observability Engineering', 44.99, 'books', true),
+    ('Cloud Native Go', 39.99, 'books', true),
+    ('System Design Interview', 34.99, 'books', false),
+    ('Joggers', 39.99, 'clothing', true),
+    ('Socks Pack', 12.99, 'clothing', true),
+    ('Beanie', 16.99, 'clothing', true),
+    ('Gloves', 24.99, 'clothing', true),
+    ('Scarf', 19.99, 'clothing', true),
+    ('Instant Noodles Pack', 14.99, 'food', true),
+    ('Dark Chocolate Bar', 6.99, 'food', true),
+    ('Dried Fruit Mix', 11.99, 'food', true),
+    ('Granola Bag', 9.99, 'food', true),
+    ('Sparkling Water 6-Pack', 7.99, 'food', true),
+    ('Matcha Powder', 21.99, 'food', true);

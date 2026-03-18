@@ -1,0 +1,157 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    build:
+      context: ./services/postgres
+      dockerfile: Dockerfile
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: aegis
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegis_demo_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - aegis-network
+
+  # OpenTelemetry Collector (receives traces from microservices, exports to Jaeger)
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "13133:13133" # Health Check extension
+      - "8888:8888" # Prometheus metrics exposed by the collector
+    networks:
+      - aegis-network
+
+  # Jaeger UI (for visualizing traces)
+  jaeger-ui:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14268:14268" # Jaeger Collector HTTP (for OTLP/Zipkin)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true" # Enables OTLP receiver in Jaeger
+    networks:
+      - aegis-network
+
+  # Microservices
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000" # Expose gateway to host
+    environment:
+      USERS_URL: http://users:8000
+      CATALOG_URL: http://catalog:8000
+      ORDERS_URL: http://orders:8000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    networks:
+      - aegis-network
+    depends_on:
+      - users
+      - catalog
+      - orders
+      - otel-collector
+
+  users:
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: aegis
+      DB_PASSWORD: aegis_demo_password
+      DB_NAME: aegis
+    networks:
+      - aegis-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  catalog:
+    build:
+      context: ./services/catalog
+      dockerfile: Dockerfile
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: aegis
+      DB_PASSWORD: aegis_demo_password
+      DB_NAME: aegis
+    networks:
+      - aegis-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  orders:
+    build:
+      context: ./services/orders
+      dockerfile: Dockerfile
+    environment:
+      PAYMENTS_URL: http://payments:8000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: aegis
+      DB_PASSWORD: aegis_demo_password
+      DB_NAME: aegis
+    networks:
+      - aegis-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      payments:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  payments:
+    build:
+      context: ./services/payments
+      dockerfile: Dockerfile
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: aegis
+      DB_PASSWORD: aegis_demo_password
+      DB_NAME: aegis
+    networks:
+      - aegis-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+# Volumes
+volumes:
+  pgdata:
+
+# Define a custom bridge network for all services
+networks:
+  aegis-network:
+    driver: bridge

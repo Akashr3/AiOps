@@ -1,0 +1,108 @@
+# k8s/prometheus-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s # How frequently to scrape targets
+      evaluation_interval: 15s # How frequently to evaluate rules
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090'] # Prometheus scrapes itself
+
+      - job_name: 'jaeger'
+        scrape_interval: 5s
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['jaeger-collector:14269']
+
+      - job_name: 'otel-collector' # Scrapes the OpenTelemetry Collector's internal metrics
+        scrape_interval: 5s
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['otel-collector:8889'] # Port 8888 for internal metrics
+
+      # --- MODIFIED: Node Exporter Scrape Config ---
+      - job_name: 'kubernetes-nodes' # This job should be for Node Exporter
+        scrape_interval: 5s
+        kubernetes_sd_configs:
+          - role: node # Discover Kubernetes nodes
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):10250' # Default kubelet metrics port, we need to change it
+            replacement: '${1}:9100' # <--- CORRECTED: Node Exporter's default port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+) # Promote node labels
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: kubernetes_node_name # Add node name as a label
+          - source_labels: [__address__] # <--- ADDED for instance label
+            target_label: instance
+            regex: '([^:]+)(:.*)?' # Capture IP/hostname for instance label
+            replacement: '$1'
+
+
+      - job_name: 'kubernetes-cadvisor' # Scrapes cAdvisor metrics from kubelet
+        scrape_interval: 5s
+        metrics_path: /metrics/cadvisor # <--- ADDED: The correct path for cAdvisor metrics
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https # Kubelet metrics endpoint is typically HTTPS
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt # Kubernetes CA certificate
+          insecure_skip_verify: true # This is often used for simplicity in dev/test clusters.
+                                     # In production, you'd want to verify the Kubelet's cert.
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token # Use the service account token
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):(.*)'
+            replacement: '${1}:10250' # Kubelet's cAdvisor port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: kubernetes_node_name
+          - source_labels: [__address__]
+            target_label: instance
+          - action: replace
+            source_labels: [__meta_kubernetes_node_name]
+            target_label: node
+
+      - job_name: 'ztunnel'
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names: ['istio-system']
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: ztunnel
+        - source_labels: [__address__]
+          action: replace
+          regex: ([^:]+)(?::\d+)?
+          replacement: $1:15020
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+
+      - job_name: 'istiod'
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names: ['istio-system']
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: istiod
+        - source_labels: [__address__]
+          action: replace
+          regex: ([^:]+)(?::\d+)?
+          replacement: $1:15014
+          target_label: __address__
+

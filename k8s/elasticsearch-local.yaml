@@ -1,0 +1,158 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: elastic-system
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data
+  namespace: elastic-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: elastic-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.3.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9200
+          name: http
+        - containerPort: 9300
+          name: transport
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
+        - name: xpack.security.enabled
+          value: "false"
+        - name: xpack.security.http.ssl.enabled
+          value: "false"
+        - name: xpack.ml.enabled
+          value: "true"
+        - name: xpack.ml.use_auto_machine_memory_percent
+          value: "true"
+        - name: node.roles
+          value: "master,data,ingest,ml,remote_cluster_client"
+        resources:
+          limits:
+            memory: 1Gi
+          requests:
+            memory: 1Gi
+            cpu: 500m
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: elasticsearch-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: elastic-system
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+  - port: 9200
+    targetPort: 9200
+    name: http
+  - port: 9300
+    targetPort: 9300
+    name: transport
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-config
+  namespace: elastic-system
+data:
+  kibana.yml: |
+    server.host: "0.0.0.0"
+    server.port: 5601
+    elasticsearch.hosts: ["http://elasticsearch.elastic-system.svc.cluster.local:9200"]
+    telemetry.enabled: false
+    elastic.apm.active: false
+    elastic.apm.contextPropagationOnly: false
+    xpack.fleet.enabled: false
+    xpack.reporting.enabled: false
+   
+    
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: elastic-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:9.3.1
+        ports:
+        - containerPort: 5601
+        resources:
+          limits:
+            memory: 1Gi
+          requests:
+            memory: 512Mi
+            cpu: 500m
+        volumeMounts:
+        - name: kibana-config
+          mountPath: /usr/share/kibana/config/kibana.yml
+          subPath: kibana.yml
+      volumes:
+      - name: kibana-config
+        configMap:
+          name: kibana-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: elastic-system
+spec:
+  selector:
+    app: kibana
+  ports:
+  - port: 5601
+    targetPort: 5601
+  type: LoadBalancer
